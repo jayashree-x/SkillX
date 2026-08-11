@@ -1,0 +1,27 @@
+{
+  "name": "skillx-functions",
+  "description": "SkillX Cloud Functions — privileged server logic (Data Connect writes, email, notifications, quiz/AI, streak, unlock, certificates).",
+  "private": true,
+  "engines": {
+    "node": "22"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "firebase-admin": "^13.0.2",
+    "firebase-functions": "^6.1.1",
+    "googleapis": "^144.0.0",
+    "nodemailer": "^6.9.16"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^6.4.16",
+    "typescript": "^5.6.3"
+  }
+}

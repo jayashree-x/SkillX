@@ -1,0 +1,6 @@
+connectorId: "default"
+generate:
+  dartSdk:
+    # Generated type-safe Dart SDK is written into the Flutter app.
+    outputDir: "../../app/lib/generated/dataconnect"
+    package: "dataconnect_generated"

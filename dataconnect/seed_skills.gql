@@ -1,0 +1,50 @@
+# =============================================================================
+# One-time skill-catalogue seed. The registration / onboarding pickers read
+# `ListSkills`, so the catalogue must be populated before anyone can sign up
+# and choose skills.
+#
+# HOW TO RUN (admin — bypasses @auth):
+#   Firebase Console → Data Connect → service "skillx" → "Run a query/mutation"
+#   panel → paste this whole mutation → Run. It is idempotent-ish: `name` is
+#   @unique, so re-running errors on duplicates rather than creating copies.
+#   (Alternatively run it from the VS Code Firebase Data Connect extension.)
+# =============================================================================
+mutation SeedSkills {
+  skill_insertMany(data: [
+    # --- Programming ---
+    { name: "Python",              category: "Programming",   description: "General-purpose programming language" }
+    { name: "JavaScript",          category: "Programming",   description: "The language of the web" }
+    { name: "Flutter",             category: "Programming",   description: "Cross-platform app development with Dart" }
+    { name: "React",               category: "Programming",   description: "UI library for the web" }
+    { name: "Data Structures",     category: "Programming",   description: "Core CS problem-solving" }
+    { name: "SQL",                 category: "Programming",   description: "Relational databases and queries" }
+
+    # --- Design ---
+    { name: "UI/UX Design",        category: "Design",        description: "Designing usable, delightful interfaces" }
+    { name: "Figma",               category: "Design",        description: "Collaborative interface design tool" }
+    { name: "Graphic Design",      category: "Design",        description: "Visual communication and layout" }
+    { name: "Video Editing",       category: "Design",        description: "Cutting and polishing video" }
+
+    # --- Languages ---
+    { name: "English",             category: "Languages",     description: "Speaking and writing English" }
+    { name: "Spanish",             category: "Languages",     description: "Conversational and written Spanish" }
+    { name: "French",              category: "Languages",     description: "Conversational and written French" }
+    { name: "Hindi",               category: "Languages",     description: "Conversational and written Hindi" }
+
+    # --- Music ---
+    { name: "Guitar",              category: "Music",         description: "Acoustic and electric guitar" }
+    { name: "Piano",               category: "Music",         description: "Keyboard fundamentals and pieces" }
+    { name: "Singing",             category: "Music",         description: "Vocal technique and control" }
+
+    # --- Business ---
+    { name: "Public Speaking",     category: "Business",      description: "Confident, clear presentations" }
+    { name: "Digital Marketing",   category: "Business",      description: "Growth, SEO, and social channels" }
+    { name: "Excel",               category: "Business",      description: "Spreadsheets, formulas, and analysis" }
+
+    # --- Lifestyle ---
+    { name: "Cooking",             category: "Lifestyle",     description: "Everyday and cuisine-specific cooking" }
+    { name: "Photography",         category: "Lifestyle",     description: "Composition and camera craft" }
+    { name: "Fitness",             category: "Lifestyle",     description: "Training, form, and routines" }
+    { name: "Chess",               category: "Lifestyle",     description: "Openings, tactics, and endgames" }
+  ])
+}

@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1037173218383",
+    "project_id": "skillx-9a717",
+    "storage_bucket": "skillx-9a717.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1037173218383:android:506afc455a1403ef759e3a",
+        "android_client_info": {
+          "package_name": "app.skillx.skillx"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1037173218383-ejee8v565msc6hgq8ticke07mcl98kq9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD4lEFlym1obMGgdkyant7Au3q8L9HK9IQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1037173218383-ejee8v565msc6hgq8ticke07mcl98kq9.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,14 @@
+specVersion: "v1"
+serviceId: "skillx"
+location: "us-central1"
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "skillxdb"
+      cloudSql:
+        # Data Connect provisions this Cloud SQL (PostgreSQL) instance on first deploy.
+        # Smallest tier is fine for dev; it is an always-on paid instance (Blaze required).
+        instanceId: "skillx-pg"
+connectorDirs:
+  - "./connector"

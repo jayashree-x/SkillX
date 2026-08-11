@@ -1,0 +1,103 @@
+# =============================================================================
+# Client-callable mutations. User rows/writes are scoped to the caller via
+# "<fkColumn>_expr". Sensitive writes (UserProgress, Certificate, grading,
+# session creation on accept) are done by Cloud Functions with an admin
+# connector — NOT exposed here.
+#
+# Note: Data Connect flattens relation inputs to FK columns in data:/key:
+# (User.uid -> userUid/teacherUid/learnerUid; Skill.id -> skillId; etc.).
+# Relation *filtering* in queries still uses nested objects in where:.
+# =============================================================================
+
+# ---- onboarding: create the signed-in user's row (email signup OR 1st Google login) ----
+mutation UpsertCurrentUser($name: String!, $email: String!, $photoUrl: String)
+@auth(level: USER) {
+  user_upsert(data: {
+    uid_expr: "auth.uid"
+    name: $name
+    email: $email
+    photoUrl: $photoUrl
+    authProvider_expr: "auth.token.firebase.sign_in_provider"
+  })
+}
+
+mutation UpdateMyProfile($name: String, $bio: String, $photoUrl: String)
+@auth(level: USER) {
+  user_update(key: { uid_expr: "auth.uid" }, data: {
+    name: $name
+    bio: $bio
+    photoUrl: $photoUrl
+  })
+}
+
+mutation SetMyResume($url: String!, $fileName: String!, $visibility: String!)
+@auth(level: USER) {
+  user_update(key: { uid_expr: "auth.uid" }, data: {
+    resumeUrl: $url
+    resumeFileName: $fileName
+    resumeUploadedAt_expr: "request.time"
+    resumeVisibility: $visibility
+  })
+}
+
+mutation DeleteMyResume @auth(level: USER) {
+  user_update(key: { uid_expr: "auth.uid" }, data: {
+    resumeUrl: null
+    resumeFileName: null
+    resumeUploadedAt: null
+  })
+}
+
+mutation SetMyFcmToken($token: String!) @auth(level: USER) {
+  user_update(key: { uid_expr: "auth.uid" }, data: { fcmToken: $token })
+}
+
+# Per-category toggles + quiet hours, stored as JSON (NOTIF-03/04). The server
+# reads this before every push (see functions/notify.ts).
+mutation SetNotificationPrefs($prefs: Any!) @auth(level: USER) {
+  user_update(key: { uid_expr: "auth.uid" }, data: { notificationPrefs: $prefs })
+}
+
+# ---- skills (registration + profile editing) ----
+mutation AddMySkill($skillId: UUID!, $relation: SkillRelation!, $proficiency: String)
+@auth(level: USER) {
+  userSkill_upsert(data: {
+    userUid_expr: "auth.uid"
+    skillId: $skillId
+    relation: $relation
+    proficiency: $proficiency
+  })
+}
+
+mutation RemoveMySkill($skillId: UUID!, $relation: SkillRelation!) @auth(level: USER) {
+  userSkill_delete(key: {
+    userUid_expr: "auth.uid"
+    skillId: $skillId
+    relation: $relation
+  })
+}
+
+# ---- requests (Module 3) ----
+# NOTE: sending a request is handled by the `sendRequest` Cloud Function — it
+# inserts the request AND notifies the teacher (interest-targeted, capped 3/day),
+# which a client mutation can't do.
+
+# Reject in-app. Scoped to the request's teacher via auth.uid so a user can
+# only reject requests addressed to them (updateMany applies the filter, and
+# no-ops if the caller isn't the teacher).
+mutation RejectRequest($requestId: UUID!) @auth(level: USER) {
+  request_updateMany(
+    where: { id: { eq: $requestId }, teacher: { uid: { eq_expr: "auth.uid" } } }
+    data: { status: REJECTED }
+  )
+}
+
+# NOTE: accepting a request is handled by the `acceptRequest` Cloud Function
+# (verifies ownership, creates the Session + SessionLearner rows, opens the
+# chat, and notifies). The old interim client-side AcceptRequest mutation was
+# removed — it flipped status by id with no ownership check.
+
+# ---- ratings (Module 9) ----
+# NOTE: rating submission is handled by the `submitRating` Cloud Function — it
+# inserts/updates the rating AND recomputes the teacher's averageRating (a
+# server-owned aggregate the client can't write).

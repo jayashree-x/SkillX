@@ -1,0 +1,183 @@
+# =============================================================================
+# SkillX — Firebase Data Connect schema (Cloud SQL for PostgreSQL)
+# Each `@table` type provisions a Postgres table. Relation fields generate FK
+# columns (<field>Id). Chat lives in Firestore (hybrid), NOT here.
+# Maps to PRD v1.2 §5.2. Enums map to Postgres text-backed enum columns.
+# =============================================================================
+
+# ------------------------------- USERS ---------------------------------------
+type User @table(key: ["uid"]) {
+  uid: String!                                    # = Firebase Auth UID
+  name: String!
+  email: String! @unique
+  photoUrl: String
+  bio: String
+  authProvider: String                            # "password" | "google.com"
+  currentStreak: Int! @default(value: 0)
+  longestStreak: Int! @default(value: 0)
+  lastActivityDate: Date                          # streak calc uses device-local date
+  totalSessions: Int! @default(value: 0)
+  averageRating: Float! @default(value: 0)
+  fcmToken: String
+  # resume (Module 10)
+  resumeUrl: String
+  resumeFileName: String
+  resumeUploadedAt: Timestamp
+  resumeVisibility: String! @default(value: "matchedOnly")   # public|matchedOnly|private
+  notificationPrefs: Any                          # JSON: per-category toggles + quiet hours
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# ------------------------------- SKILLS --------------------------------------
+type Skill @table {
+  name: String! @unique
+  category: String!
+  description: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+enum SkillRelation { HAVE  TEACH  LEARN }
+
+# Replaces users.skillsIHave[] / skillsCanTeach[] / skillsWantToLearn[] (TRUST-01)
+type UserSkill @table(key: ["user", "skill", "relation"]) {
+  user: User!
+  skill: Skill!
+  relation: SkillRelation!
+  proficiency: String                             # beginner|intermediate|advanced (PROF-09)
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# --------------------------- LEARNING PATHS ----------------------------------
+type LearningPath @table {
+  skill: Skill!
+  title: String!
+  teacher: User!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type LearningModule @table {
+  path: LearningPath!
+  order: Int!                                     # 1-based sequence
+  title: String!
+  description: String
+}
+
+# --------------------- PROGRESS (server-write only) --------------------------
+type UserProgress @table(key: ["user", "path"]) {
+  user: User!
+  path: LearningPath!
+  currentModuleOrder: Int! @default(value: 1)
+  unlockedUpTo: Int! @default(value: 1)          # PATH-02: only module 1 unlocked initially
+  isPathComplete: Boolean! @default(value: false)
+  certificateId: UUID
+  startedAt: Timestamp! @default(expr: "request.time")
+  completedAt: Timestamp
+}
+
+type CompletedModule @table(key: ["progress", "module"]) {
+  progress: UserProgress!
+  module: LearningModule!
+  completedAt: Timestamp! @default(expr: "request.time")
+}
+
+# ------------------------------ REQUESTS -------------------------------------
+enum RequestStatus { PENDING  ACCEPTED  REJECTED  COMPLETED }
+
+type Request @table {
+  learner: User!
+  teacher: User!
+  skill: Skill!
+  status: RequestStatus! @default(value: PENDING)
+  preferredDateTime: Timestamp
+  message: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# ------------------------------ SESSIONS -------------------------------------
+enum SessionLevel  { BASIC  BEGINNER  INTERMEDIATE  ADVANCED }
+enum SessionStatus { SCHEDULED  ONGOING  COMPLETED  CANCELLED }
+
+type Session @table {
+  request: Request!
+  teacher: User!
+  topic: String!                                  # PRE-02
+  topicTags: [String]                             # PRE-02
+  plannedSubtopics: [String]                      # PRE-02a
+  coveredSubtopics: [String]                      # POST-02 (confirmed after session)
+  level: SessionLevel!                            # PRE-03
+  durationHours: Int!                             # PRE-04
+  meetingLink: String                             # locked until form complete (HOME-07a)
+  scheduledAt: Timestamp
+  module: LearningModule                          # optional link into a learning path
+  path: LearningPath
+  status: SessionStatus! @default(value: SCHEDULED)
+  endedAt: Timestamp
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# PRE-01: a session can hold multiple learners
+type SessionLearner @table(key: ["session", "learner"]) {
+  session: Session!
+  learner: User!
+}
+
+# ------------------------------- QUIZZES -------------------------------------
+enum GenerationMethod { AUTO  MANUAL }
+
+type Quiz @table {
+  session: Session!
+  skill: Skill!
+  teacher: User!
+  topic: String!
+  coveredSubtopics: [String]
+  level: SessionLevel!
+  generationMethod: GenerationMethod!             # AUTO (Claude) | MANUAL fallback
+  isApproved: Boolean! @default(value: false)     # QUIZ-18: released only after approval
+  approvedAt: Timestamp
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type QuizQuestion @table {
+  quiz: Quiz!
+  order: Int!
+  questionText: String!
+  option0: String!
+  option1: String!
+  option2: String!
+  option3: String!
+  correctIndex: Int!                              # ⚠ NEVER selected by a learner-facing query
+}
+
+# --------------------- ATTEMPTS / CERTS / RATINGS ----------------------------
+# QUIZ-11: one row per attempt, never overwritten — sole source for dashboards
+type QuizAttempt @table {
+  user: User!
+  quiz: Quiz!
+  skillName: String!
+  score: Int!
+  totalQuestions: Int! @default(value: 5)
+  percentage: Float!
+  badgeEarned: String                             # bronze|silver|gold|none
+  completedAt: Timestamp! @default(expr: "request.time")
+}
+
+# CERT-09: server-write only, immutable once issued
+type Certificate @table {
+  user: User!
+  path: LearningPath!
+  skillName: String!
+  teacherName: String!
+  averageScore: Float!
+  modulesCompleted: Int!
+  pdfUrl: String
+  issuedAt: Timestamp! @default(expr: "request.time")
+}
+
+type Rating @table {
+  session: Session!
+  learner: User!
+  teacher: User!
+  stars: Int!                                     # 1..5 (RATE-01)
+  feedback: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}

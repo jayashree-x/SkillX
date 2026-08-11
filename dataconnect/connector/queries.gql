@@ -1,0 +1,254 @@
+# =============================================================================
+# Client-callable queries. @auth(level: USER) => signed-in; PUBLIC => anyone.
+# "eq_expr" injects a trusted server value (e.g. the caller's uid) so a user
+# can only fetch their own scoped data.
+# =============================================================================
+
+# ---- current user ----
+query GetCurrentUser @auth(level: USER) {
+  users(where: { uid: { eq_expr: "auth.uid" } }, limit: 1) {
+    uid name email photoUrl bio authProvider
+    currentStreak longestStreak lastActivityDate
+    totalSessions averageRating
+    resumeUrl resumeFileName resumeUploadedAt resumeVisibility
+  }
+}
+
+query GetMyNotificationPrefs @auth(level: USER) {
+  users(where: { uid: { eq_expr: "auth.uid" } }, limit: 1) {
+    notificationPrefs
+  }
+}
+
+query GetMySkills @auth(level: USER) {
+  userSkills(where: { user: { uid: { eq_expr: "auth.uid" } } }) {
+    relation proficiency
+    skill { id name category }
+  }
+}
+
+# ---- discovery (Home, Module 3) ----
+query SearchSkills($q: String!)
+@auth(level: PUBLIC, insecureReason: "Public skill catalogue search — browsable before sign-up.") {
+  skills(where: { name: { contains: $q } }, orderBy: { name: ASC }, limit: 50) {
+    id name category description
+  }
+}
+
+query ListSkillsByCategory($category: String!)
+@auth(level: PUBLIC, insecureReason: "Public skill catalogue — browsable before sign-up.") {
+  skills(where: { category: { eq: $category } }, orderBy: { name: ASC }) {
+    id name category
+  }
+}
+
+# whole catalogue, for the registration / onboarding skill pickers (REG-05/06)
+query ListSkills
+@auth(level: PUBLIC, insecureReason: "Public skill catalogue for onboarding pickers.") {
+  skills(orderBy: { category: ASC }) {
+    id name category
+  }
+}
+
+# teachers offering a given skill, with trust signals (TRUST-02/03)
+query ListTeachersForSkill($skillId: UUID!)
+@auth(level: USER, insecureReason: "Discovery — any signed-in user may browse teachers of a skill.") {
+  userSkills(
+    where: { skill: { id: { eq: $skillId } }, relation: { eq: TEACH } }
+  ) {
+    user { uid name photoUrl averageRating totalSessions }
+  }
+}
+
+# Home "Browse Skills": every teachable offering with its teacher + trust
+# signals (HOME-03, TRUST-02/03). Category filtering is done client-side.
+query ListTeachOfferings
+@auth(level: USER, insecureReason: "Discovery feed — shared across all signed-in users.") {
+  userSkills(where: { relation: { eq: TEACH } }, limit: 100) {
+    proficiency
+    skill { id name category description }
+    user { uid name photoUrl averageRating totalSessions }
+  }
+}
+
+# Home search by skill name (HOME-02), scoped to teachable offerings.
+query SearchTeachOfferings($q: String!)
+@auth(level: USER, insecureReason: "Discovery search — shared across all signed-in users.") {
+  userSkills(
+    where: { relation: { eq: TEACH }, skill: { name: { contains: $q } } }
+    limit: 50
+  ) {
+    proficiency
+    skill { id name category description }
+    user { uid name photoUrl averageRating totalSessions }
+  }
+}
+
+# ---- requests (Module 3) ----
+query GetIncomingRequests @auth(level: USER) {
+  requests(
+    where: { teacher: { uid: { eq_expr: "auth.uid" } }, status: { eq: PENDING } }
+    orderBy: { createdAt: DESC }
+  ) {
+    id status preferredDateTime message createdAt
+    learner { uid name photoUrl }
+    skill { id name }
+  }
+}
+
+query GetMyAcceptedTeachingRequests @auth(level: USER) {
+  requests(
+    where: { teacher: { uid: { eq_expr: "auth.uid" } }, status: { eq: ACCEPTED } }
+    orderBy: { createdAt: DESC }
+  ) {
+    id preferredDateTime message createdAt
+    learner { uid name photoUrl }
+    skill { id name }
+  }
+}
+
+query GetMyOutgoingRequests @auth(level: USER) {
+  requests(
+    where: { learner: { uid: { eq_expr: "auth.uid" } } }
+    orderBy: { createdAt: DESC }
+  ) {
+    id status preferredDateTime createdAt
+    teacher { uid name photoUrl }
+    skill { id name }
+  }
+}
+
+# ---- sessions (Home upcoming card, Module 3) ----
+query GetMyUpcomingSessionsAsLearner @auth(level: USER) {
+  sessionLearners(
+    where: { learner: { uid: { eq_expr: "auth.uid" } } }
+  ) {
+    session {
+      id topic level durationHours meetingLink scheduledAt status
+      teacher { uid name photoUrl }
+    }
+  }
+}
+
+query GetSession($sessionId: UUID!)
+@auth(level: USER, insecureReason: "Fetched by unguessable UUID (capability); shared by session participants.") {
+  session(id: $sessionId) {
+    id topic topicTags plannedSubtopics coveredSubtopics
+    level durationHours meetingLink scheduledAt status
+    teacher { uid name photoUrl }
+  }
+}
+
+# ---- teaching sessions (Module 5 / Phase 6): run post-session form + quiz ----
+query GetMyTeachingSessions @auth(level: USER) {
+  sessions(
+    where: { teacher: { uid: { eq_expr: "auth.uid" } } }
+    orderBy: { createdAt: DESC }
+    limit: 50
+  ) {
+    id topic level status plannedSubtopics coveredSubtopics
+  }
+}
+
+# Approved quizzes available to the signed-in learner (sessions they attended).
+query GetMyQuizzes @auth(level: USER) {
+  sessionLearners(where: { learner: { uid: { eq_expr: "auth.uid" } } }) {
+    session {
+      id topic
+      quizzes: quizzes_on_session(where: { isApproved: { eq: true } }) {
+        id topic level
+      }
+    }
+  }
+}
+
+# ---- quiz (Module 5) — LEARNER-FACING: correctIndex deliberately omitted ----
+query GetLearnerQuiz($quizId: UUID!)
+@auth(level: USER, insecureReason: "Learner-facing quiz by UUID; correctIndex is never returned.") {
+  quiz(id: $quizId) {
+    id topic coveredSubtopics level isApproved
+    questions: quizQuestions_on_quiz(orderBy: { order: ASC }) {
+      id order questionText option0 option1 option2 option3
+    }
+  }
+}
+
+# ---- dashboard (Module 7) — charts read from attempt history ----
+query GetMyAttempts($limit: Int!) @auth(level: USER) {
+  quizAttempts(
+    where: { user: { uid: { eq_expr: "auth.uid" } } }
+    orderBy: { completedAt: DESC }
+    limit: $limit
+  ) {
+    id skillName score totalQuestions percentage badgeEarned completedAt
+  }
+}
+
+# ---- learning path (Module 11) ----
+query GetMyProgress($pathId: UUID!) @auth(level: USER) {
+  userProgresses(
+    where: { user: { uid: { eq_expr: "auth.uid" } }, path: { id: { eq: $pathId } } }
+    limit: 1
+  ) {
+    currentModuleOrder unlockedUpTo isPathComplete certificateId
+  }
+}
+
+# Learning paths the learner is enrolled in, with total/unlocked to derive a
+# progress bar (PATH-04).
+query GetMyLearningPaths @auth(level: USER) {
+  userProgresses(where: { user: { uid: { eq_expr: "auth.uid" } } }) {
+    currentModuleOrder unlockedUpTo isPathComplete
+    path {
+      id title
+      skill { name }
+      modules: learningModules_on_path { id }
+    }
+  }
+}
+
+# All available paths, for the "Explore paths" enrol picker.
+query ListLearningPaths
+@auth(level: USER, insecureReason: "Learning paths are a shared, browsable catalogue.") {
+  learningPaths(orderBy: { createdAt: DESC }, limit: 50) {
+    id title
+    skill { name }
+    teacher { name }
+    modules: learningModules_on_path { id }
+  }
+}
+
+# Ordered modules for one path + the caller's progress (drives lock states).
+query GetPathDetail($pathId: UUID!) @auth(level: USER) {
+  learningPath(id: $pathId) {
+    id title
+    skill { name }
+    teacher { name }
+    modules: learningModules_on_path(orderBy: { order: ASC }) {
+      id order title description
+    }
+  }
+  progress: userProgresses(
+    where: { user: { uid: { eq_expr: "auth.uid" } }, path: { id: { eq: $pathId } } }
+    limit: 1
+  ) {
+    currentModuleOrder unlockedUpTo isPathComplete certificateId
+  }
+}
+
+# The approved quiz (if any) tied to a module, via its session.
+query GetModuleQuiz($moduleId: UUID!)
+@auth(level: USER, insecureReason: "Resolves a module's released quiz id by module UUID.") {
+  sessions(where: { module: { id: { eq: $moduleId } } }, limit: 5) {
+    quizzes: quizzes_on_session(where: { isApproved: { eq: true } }, limit: 1) {
+      id topic
+    }
+  }
+}
+
+# ---- certificates / rewards (Module 6, 12) ----
+query GetMyCertificates @auth(level: USER) {
+  certificates(where: { user: { uid: { eq_expr: "auth.uid" } } }, orderBy: { issuedAt: DESC }) {
+    id skillName teacherName averageScore modulesCompleted pdfUrl issuedAt
+  }
+}
