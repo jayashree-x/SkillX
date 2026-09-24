@@ -3,6 +3,7 @@
 class IncomingRequest {
   const IncomingRequest({
     required this.id,
+    required this.learnerUid,
     required this.learnerName,
     required this.skillName,
     required this.createdAt,
@@ -12,6 +13,7 @@ class IncomingRequest {
   });
 
   final String id;
+  final String learnerUid;
   final String learnerName;
   final String? learnerPhotoUrl;
   final String skillName;

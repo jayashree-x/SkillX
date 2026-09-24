@@ -23,6 +23,9 @@ class SkillDetailScreen extends ConsumerWidget {
           data: (ids) => ids.contains(offering.skillId),
           orElse: () => false,
         );
+    final extrasKey =
+        (teacherUid: offering.teacherUid, skillId: offering.skillId);
+    final extras = ref.watch(teacherExtrasProvider(extrasKey));
 
     return Scaffold(
       appBar: AppBar(
@@ -57,6 +60,17 @@ class SkillDetailScreen extends ConsumerWidget {
 
           const SizedBox(height: AppSpacing.lg),
           _TeacherCard(offering: offering),
+          extras.maybeWhen(
+            data: (e) {
+              final trusted = (e['trustedSkills'] as List?) ?? const [];
+              if (trusted.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: _TrustedChips(trusted: trusted),
+              );
+            },
+            orElse: () => const SizedBox.shrink(),
+          ),
 
           if (offering.description != null &&
               offering.description!.isNotEmpty) ...[
@@ -85,17 +99,20 @@ class SkillDetailScreen extends ConsumerWidget {
             _MatchBanner(skillName: offering.skillName),
           ],
 
+          extras.maybeWhen(
+            data: (e) => _ReviewsSection(
+              reviews: (e['reviews'] as List?) ?? const [],
+              average: (e['averageRating'] as num?)?.toDouble() ?? 0,
+            ),
+            orElse: () => const SizedBox.shrink(),
+          ),
           const SizedBox(height: AppSpacing.xl),
-          PrimaryButton(
-            label: 'Send Request',
-            onPressed: () async {
-              final sent = await showSendRequestSheet(context, offering);
-              if (sent == true && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Request sent.')),
-                );
-              }
-            },
+          extras.maybeWhen(
+            data: (e) => (e['alreadyRequested'] == true)
+                ? const _RequestedButton()
+                : _SendButton(offering: offering, extrasKey: extrasKey),
+            orElse: () =>
+                _SendButton(offering: offering, extrasKey: extrasKey),
           ),
         ],
       ),
@@ -211,6 +228,190 @@ class _MatchBanner extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class _TrustedChips extends StatelessWidget {
+  const _TrustedChips({required this.trusted});
+  final List<dynamic> trusted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final t in trusted)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.tealTint,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: AppColors.teal.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.verified, size: 15, color: AppColors.teal),
+                const SizedBox(width: 5),
+                Text('Trusted in ${(t as Map)['skill']}',
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.teal)),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ReviewsSection extends StatelessWidget {
+  const _ReviewsSection({required this.reviews, required this.average});
+  final List<dynamic> reviews;
+  final double average;
+
+  @override
+  Widget build(BuildContext context) {
+    if (reviews.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: AppSpacing.lg),
+        Row(
+          children: [
+            const Text('Reviews',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary)),
+            const SizedBox(width: 8),
+            if (average > 0)
+              Text('${average.toStringAsFixed(1)} \u2605',
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.reward)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        for (final r in reviews)
+          _ReviewTile(data: (r as Map).cast<String, dynamic>()),
+      ],
+    );
+  }
+}
+
+class _ReviewTile extends StatelessWidget {
+  const _ReviewTile({required this.data});
+  final Map<String, dynamic> data;
+
+  @override
+  Widget build(BuildContext context) {
+    final stars = (data['stars'] as num?)?.toInt() ?? 0;
+    final name = data['learnerName'] as String? ?? 'SkillX learner';
+    final feedback = data['feedback'] as String? ?? '';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(name,
+                    style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary)),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (int i = 0; i < 5; i++)
+                    Icon(
+                      i < stars
+                          ? Icons.star_rounded
+                          : Icons.star_outline_rounded,
+                      size: 16,
+                      color: AppColors.reward,
+                    ),
+                ],
+              ),
+            ],
+          ),
+          if (feedback.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(feedback,
+                style: const TextStyle(
+                    fontSize: 13.5, height: 1.4, color: AppColors.textSecondary)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+
+class _SendButton extends ConsumerWidget {
+  const _SendButton({required this.offering, required this.extrasKey});
+  final Offering offering;
+  final ({String teacherUid, String skillId}) extrasKey;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return PrimaryButton(
+      label: 'Send Request',
+      onPressed: () async {
+        final sent = await showSendRequestSheet(context, offering);
+        if (sent == true) {
+          ref.invalidate(teacherExtrasProvider(extrasKey));
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Request sent.')),
+            );
+          }
+        }
+      },
+    );
+  }
+}
+
+class _RequestedButton extends StatelessWidget {
+  const _RequestedButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppColors.fill,
+        borderRadius: BorderRadius.circular(AppRadius.button),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle, size: 18, color: AppColors.success),
+          SizedBox(width: 8),
+          Text('Request already sent',
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary)),
         ],
       ),
     );

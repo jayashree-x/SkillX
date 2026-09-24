@@ -98,7 +98,11 @@ class AuthRepository {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         throw const AuthCancelled();
       }
-      throw const AuthFailure('Google sign-in failed. Please try again.');
+      // TEMP DIAGNOSTIC: surface the real code/description so we can see why the
+      // release build fails. Revert to the generic message once fixed.
+      throw AuthFailure(
+        'Google sign-in failed [${e.code.name}] ${e.description ?? ''}',
+      );
     } on FirebaseAuthException catch (e) {
       throw AuthFailure.fromCode(e.code);
     }

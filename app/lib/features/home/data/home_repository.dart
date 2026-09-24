@@ -29,6 +29,7 @@ class HomeRepository {
         .map(
           (r) => IncomingRequest(
             id: r.id,
+            learnerUid: r.learner.uid,
             learnerName: r.learner.name,
             learnerPhotoUrl: r.learner.photoUrl,
             skillName: r.skill.name,

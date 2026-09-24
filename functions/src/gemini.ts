@@ -32,15 +32,15 @@ export async function generateQuizQuestions(input: {
   const difficulty = LEVEL_GUIDANCE[input.level] ?? "application";
 
   const prompt =
-    `Write exactly 5 multiple-choice questions that check understanding of ` +
-    `"${input.topic}". Cover only these subtopics: ${input.coveredSubtopics.join(", ")}. ` +
+    `Write exactly 10 multiple-choice questions that check understanding of ` +
+    `"${input.topic}". Cover only these topics: ${input.coveredSubtopics.join(", ")}. ` +
     `Difficulty: ${input.level} — ${difficulty}. Each question has exactly 4 options ` +
-    `and exactly one correct answer. Spread the questions across the subtopics rather ` +
-    `than clustering on one. Return a JSON array of exactly 5 objects, each with ` +
+    `and exactly one correct answer. Spread the questions across the topics rather ` +
+    `than clustering on one. Return a JSON array of exactly 10 objects, each with ` +
     `{ questionText: string, options: [4 strings], correctIndex: 0-3 }.`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-flash-latest",
     contents: prompt,
     config: {
       // Structured output — Gemini validates the response against this schema.
@@ -77,10 +77,10 @@ export async function generateQuizQuestions(input: {
         q.correctIndex >= 0 &&
         q.correctIndex <= 3,
     )
-    .slice(0, 5);
+    .slice(0, 10);
 
-  if (questions.length < 5) {
-    throw new Error("Model returned fewer than 5 valid questions.");
+  if (questions.length < 10) {
+    throw new Error("Model returned fewer than 10 valid questions.");
   }
   return questions;
 }

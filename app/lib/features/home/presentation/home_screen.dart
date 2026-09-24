@@ -9,6 +9,8 @@ import '../../../shared/widgets/user_avatar.dart';
 import '../../discovery/application/discovery_providers.dart';
 import '../../discovery/domain/offering.dart';
 import '../../discovery/presentation/widgets/offering_card.dart';
+import '../../chat/application/chat_providers.dart';
+import '../../chat/presentation/chat_thread_screen.dart';
 import '../../requests/application/requests_controller.dart';
 import '../../requests/domain/accepted_request.dart';
 import '../application/home_providers.dart';
@@ -140,17 +142,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: IncomingRequestCard(
             request: r,
             busy: busy,
-            onAccept: () => controller.accept(r.id),
+            onAccept: () => _acceptAndOpenChat(controller, r),
             onReject: () => controller.reject(r.id),
           ),
         ),
     ];
   }
 
+  /// Accept the request, then drop the teacher straight into the 1:1 chat so
+  /// they can discuss before scheduling the session.
+  Future<void> _acceptAndOpenChat(
+    RequestsController controller,
+    IncomingRequest r,
+  ) async {
+    final chatId = await controller.accept(r.id);
+    if (chatId == null || !mounted) return;
+    context.push(
+      '/chat-thread',
+      extra: ChatThreadArgs(
+        chatId: chatId,
+        otherUid: r.learnerUid,
+        title: r.learnerName,
+      ),
+    );
+  }
+
   List<Widget> _readyToTeachSection(
     AsyncValue<List<AcceptedTeachingRequest>> accepted,
   ) {
-    final requests = accepted.valueOrNull ?? const [];
+    final myUid = ref.watch(currentUidProvider);
+    final initiated = ref.watch(initiatedChatIdsProvider).valueOrNull ?? const {};
+    // Drop cards whose chat is already underway — those move into the Chat tab.
+    final requests = [
+      for (final r in accepted.valueOrNull ?? const <AcceptedTeachingRequest>[])
+        if (!initiated.contains(([myUid, r.learnerUid]..sort()).join('_'))) r,
+    ];
     if (requests.isEmpty) return const [];
     return [
       _SectionHeader('Ready to teach', count: requests.length),
@@ -159,7 +185,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           padding: const EdgeInsets.only(bottom: 10),
           child: _AcceptedRequestCard(
             request: r,
-            onStart: () => context.push('/pre-session', extra: r),
+            onChat: () {
+              // Open the 1:1 chat to discuss first; the "Start Session" button
+              // that launches the Meet lives inside the chat thread. The chat id
+              // is the two uids sorted and joined (matches the backend).
+              final myUid = ref.read(currentUidProvider);
+              final chatId = ([myUid, r.learnerUid]..sort()).join('_');
+              context.push(
+                '/chat-thread',
+                extra: ChatThreadArgs(
+                  chatId: chatId,
+                  otherUid: r.learnerUid,
+                  title: r.learnerName,
+                ),
+              );
+            },
           ),
         ),
     ];
@@ -245,10 +285,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 }
 
 class _AcceptedRequestCard extends StatelessWidget {
-  const _AcceptedRequestCard({required this.request, required this.onStart});
+  const _AcceptedRequestCard({required this.request, required this.onChat});
 
   final AcceptedTeachingRequest request;
-  final VoidCallback onStart;
+  final VoidCallback onChat;
 
   @override
   Widget build(BuildContext context) {
@@ -290,15 +330,16 @@ class _AcceptedRequestCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          SizedBox(
-            height: 38,
-            child: ElevatedButton(
-              onPressed: onStart,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              ),
-              child: const Text('Start Session'),
+          ElevatedButton.icon(
+            onPressed: onChat,
+            icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
+            label: const Text('Chat'),
+            style: ElevatedButton.styleFrom(
+              // The app theme makes buttons full-width (Size.fromHeight); inside
+              // a Row that would starve the name column, so size to content here.
+              minimumSize: const Size(0, 38),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ),
         ],

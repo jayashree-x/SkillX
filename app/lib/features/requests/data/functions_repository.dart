@@ -27,7 +27,13 @@ class FunctionsRepository {
       body: jsonEncode(body),
     );
     if (response.statusCode >= 400) {
-      throw Exception('$name failed (${response.statusCode})');
+      // Surface the server's friendly message (fail() returns { error }).
+      String msg = '$name failed (${response.statusCode})';
+      try {
+        final body = jsonDecode(response.body);
+        if (body is Map && body['error'] is String) msg = body['error'] as String;
+      } catch (_) {}
+      throw FunctionFailure(msg, response.statusCode);
     }
     if (response.body.isEmpty) return const {};
     return (jsonDecode(response.body) as Map).cast<String, dynamic>();
@@ -48,9 +54,50 @@ class FunctionsRepository {
         if (message != null && message.trim().isNotEmpty) 'message': message.trim(),
       });
 
-  /// Real accept: ACCEPTED + opens the chat + notifies the learner.
-  Future<void> acceptRequest(String requestId) =>
-      _post('acceptRequest', {'requestId': requestId});
+  /// Real accept: ACCEPTED + opens the chat + notifies the learner. Returns the
+  /// 1:1 chat id so the teacher can be dropped straight into the conversation.
+  Future<String?> acceptRequest(String requestId) async {
+    final data = await _post('acceptRequest', {'requestId': requestId});
+    return data['chatId'] as String?;
+  }
+
+  /// Reject: REJECTED + notifies the learner. Goes through the function (not a
+  /// client Data Connect mutation) so the decline can push a notification.
+  Future<void> rejectRequest(String requestId) =>
+      _post('rejectRequest', {'requestId': requestId});
+
+  /// "Session didn't happen" — mark a scheduled session CANCELLED (idempotent),
+  /// clear its chat card and notify the other party. Used when a meeting fell
+  /// through (e.g. the teacher disconnected and never returned).
+  Future<void> cancelSession(String sessionId) =>
+      _post('cancelSession', {'sessionId': sessionId});
+
+  /// Learner "skills in progress" (reworked learning path). Each entry:
+  /// { skill, attempts, bestPercentage, passed, topics: [{name, done}] }.
+  Future<List<Map<String, dynamic>>> getSkillProgress() async {
+    final data = await _post('getSkillProgress', const {});
+    return ((data['skills'] as List?) ?? const [])
+        .map((e) => (e as Map).cast<String, dynamic>())
+        .toList();
+  }
+
+  /// Teacher detail extras: reviews + trusted skills + rating summary, and
+  /// (when skillId is given) whether the caller already has an open request.
+  Future<Map<String, dynamic>> getTeacherExtras(String teacherUid,
+      {String? skillId}) {
+    final body = <String, dynamic>{'teacherUid': teacherUid};
+    if (skillId != null) body['skillId'] = skillId;
+    return _post('getTeacherExtras', body);
+  }
+
+  /// TRUST quiz step 1 -> { skillName, questions: [{questionText, options}] }.
+  Future<Map<String, dynamic>> startTrustQuiz(String skillId) =>
+      _post('startTrustQuiz', {'skillId': skillId});
+
+  /// TRUST quiz step 2 -> { passed, percentage, score, total }.
+  Future<Map<String, dynamic>> submitTrustQuiz(
+          String skillId, List<int> answers) =>
+      _post('submitTrustQuiz', {'skillId': skillId, 'answers': answers});
 
   /// Pre-Session Form submit → creates the session. The backend creates a
   /// Google Calendar event + Meet link and emails invites to both people, so
@@ -77,4 +124,14 @@ class FunctionsRepository {
     });
     return data['sessionId'] as String;
   }
+}
+
+/// A Cloud Function call that failed, carrying the server's message + status
+/// so callers can show it (e.g. the duplicate-request 409).
+class FunctionFailure implements Exception {
+  const FunctionFailure(this.message, this.statusCode);
+  final String message;
+  final int statusCode;
+  @override
+  String toString() => message;
 }

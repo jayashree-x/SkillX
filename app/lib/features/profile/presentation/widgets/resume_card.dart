@@ -184,7 +184,10 @@ class ResumeCard extends ConsumerWidget {
           bytes: bytes,
           visibility: profile.resumeVisibility,
         );
-    if (context.mounted && !ok) _snack(context, 'Upload failed. Try again.');
+    if (context.mounted && !ok) {
+      final err = ref.read(profileControllerProvider).error;
+      _snack(context, 'Upload failed: ${err ?? 'try again'}');
+    }
   }
 
   Future<void> _open(BuildContext context, String url) async {
@@ -197,16 +200,16 @@ class ResumeCard extends ConsumerWidget {
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final yes = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         title: const Text('Delete resume?'),
         content: const Text('This removes your uploaded resume for good.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogCtx, false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogCtx, true),
             child: const Text('Delete', style: TextStyle(color: AppColors.error)),
           ),
         ],

@@ -72,18 +72,18 @@ class TeachingSessionsScreen extends ConsumerWidget {
                     ),
                     const SizedBox(width: 10),
                     if (s.canRunQuiz)
-                      SizedBox(
-                        height: 36,
-                        child: ElevatedButton(
-                          onPressed: () =>
-                              context.push('/post-session-form', extra: s),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            textStyle: const TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.w600),
-                          ),
-                          child: const Text('Make quiz'),
+                      ElevatedButton(
+                        onPressed: () =>
+                            context.push('/post-session-form', extra: s),
+                        style: ElevatedButton.styleFrom(
+                          // Theme sets buttons full-width; cap it here so the
+                          // button doesn't starve the Expanded text in the Row.
+                          minimumSize: const Size(0, 36),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          textStyle: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600),
                         ),
+                        child: const Text('Make quiz'),
                       )
                     else
                       const Text(

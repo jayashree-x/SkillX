@@ -93,7 +93,7 @@ class PathDetailScreen extends ConsumerWidget {
     if (state == ModuleState.locked) {
       showDialog<void>(
         context: context,
-        builder: (_) => AlertDialog(
+        builder: (dialogContext) => AlertDialog(
           icon: const Icon(Icons.lock_outline),
           title: const Text('Module locked'),
           content: Text(
@@ -103,7 +103,7 @@ class PathDetailScreen extends ConsumerWidget {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('Got it'),
             ),
           ],

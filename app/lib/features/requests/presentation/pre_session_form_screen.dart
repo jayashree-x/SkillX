@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/widgets/primary_button.dart';
-import '../../../shared/widgets/skill_chip.dart';
 import '../application/requests_controller.dart';
 import '../domain/accepted_request.dart';
 
@@ -34,38 +33,18 @@ class PreSessionFormScreen extends ConsumerStatefulWidget {
 }
 
 class _PreSessionFormScreenState extends ConsumerState<PreSessionFormScreen> {
-  final _topic = TextEditingController();
-  final _tags = <String>[];
-  final _subtopics = <String>[];
   _Level? _level;
   int? _duration;
 
-  @override
-  void initState() {
-    super.initState();
-    _topic.addListener(() => setState(() {}));
-  }
-
-  @override
-  void dispose() {
-    _topic.dispose();
-    super.dispose();
-  }
-
-  bool get _formComplete =>
-      _topic.text.trim().length >= 3 &&
-      _tags.isNotEmpty &&
-      _subtopics.isNotEmpty &&
-      _level != null &&
-      _duration != null;
+  bool get _formComplete => _level != null && _duration != null;
 
   Future<void> _submit() async {
     final ok = await ref.read(requestsControllerProvider.notifier).createSession(
           requestId: widget.request.id,
           learnerUids: [widget.request.learnerUid],
-          topic: _topic.text.trim(),
-          topicTags: _tags,
-          plannedSubtopics: _subtopics,
+          topic: widget.request.skillName,
+          topicTags: const [],
+          plannedSubtopics: const [],
           level: _level!.gql,
           durationHours: _duration!,
         );
@@ -108,31 +87,6 @@ class _PreSessionFormScreenState extends ConsumerState<PreSessionFormScreen> {
             style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
           ),
           const SizedBox(height: AppSpacing.lg),
-
-          _label('Topic / subject'),
-          TextField(
-            controller: _topic,
-            decoration: const InputDecoration(hintText: 'e.g. Intro to Python'),
-          ),
-          const SizedBox(height: AppSpacing.md),
-
-          _label('Topic tags'),
-          _ChipInput(
-            hint: 'Add a tag…',
-            values: _tags,
-            variant: SkillChipVariant.teach,
-            onChanged: () => setState(() {}),
-          ),
-          const SizedBox(height: AppSpacing.md),
-
-          _label('Planned subtopics'),
-          _ChipInput(
-            hint: 'e.g. variables, loops…',
-            values: _subtopics,
-            variant: SkillChipVariant.learn,
-            onChanged: () => setState(() {}),
-          ),
-          const SizedBox(height: AppSpacing.md),
 
           _label('Level'),
           Wrap(
@@ -260,82 +214,3 @@ class _DurationChip extends StatelessWidget {
   }
 }
 
-/// A text field that turns entries into removable chips on submit.
-class _ChipInput extends StatefulWidget {
-  const _ChipInput({
-    required this.hint,
-    required this.values,
-    required this.variant,
-    required this.onChanged,
-  });
-
-  final String hint;
-  final List<String> values;
-  final SkillChipVariant variant;
-  final VoidCallback onChanged;
-
-  @override
-  State<_ChipInput> createState() => _ChipInputState();
-}
-
-class _ChipInputState extends State<_ChipInput> {
-  final _controller = TextEditingController();
-
-  void _add(String raw) {
-    final value = raw.trim();
-    if (value.isEmpty || widget.values.contains(value)) {
-      _controller.clear();
-      return;
-    }
-    setState(() {
-      widget.values.add(value);
-      _controller.clear();
-    });
-    widget.onChanged();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (widget.values.isNotEmpty) ...[
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final v in widget.values)
-                SkillChip(
-                  label: v,
-                  variant: widget.variant,
-                  onRemove: () {
-                    setState(() => widget.values.remove(v));
-                    widget.onChanged();
-                  },
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-        ],
-        TextField(
-          controller: _controller,
-          textInputAction: TextInputAction.done,
-          onSubmitted: _add,
-          decoration: InputDecoration(
-            hintText: widget.hint,
-            suffixIcon: IconButton(
-              icon: const Icon(Icons.add, size: 20),
-              onPressed: () => _add(_controller.text),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}

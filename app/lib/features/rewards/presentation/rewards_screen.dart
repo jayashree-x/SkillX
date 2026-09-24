@@ -136,7 +136,7 @@ class RewardsScreen extends ConsumerWidget {
   void _showBadge(BuildContext context, _Badge badge) {
     showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         icon: Icon(
           badge.icon,
           size: 40,
@@ -149,7 +149,7 @@ class RewardsScreen extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Close'),
           ),
         ],

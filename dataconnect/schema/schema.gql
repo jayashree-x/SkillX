@@ -181,3 +181,13 @@ type Rating @table {
   feedback: String
   createdAt: Timestamp! @default(expr: "request.time")
 }
+
+# ---------------------- TRUSTED TEACHER (per skill) --------------------------
+# TRUST badge: a teacher who passes the optional skill quiz is "Trusted" in that
+# skill. Server-write only (awarded inside submitTrustQuiz). One row per pair.
+type TrustedSkill @table(key: ["teacher", "skill"]) {
+  teacher: User!
+  skill: Skill!
+  score: Float!                                   # % scored on the trust quiz
+  verifiedAt: Timestamp! @default(expr: "request.time")
+}

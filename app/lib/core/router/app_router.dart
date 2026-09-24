@@ -34,6 +34,7 @@ import '../../features/requests/presentation/pre_session_form_screen.dart';
 import '../../features/profile/presentation/edit_profile_screen.dart';
 import '../../features/profile/presentation/manage_skills_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
+import '../../features/profile/presentation/trust_quiz_screen.dart';
 import '../../features/rewards/presentation/rewards_screen.dart';
 import 'main_shell.dart';
 
@@ -104,6 +105,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/profile/skills',
         builder: (_, _) => const ManageSkillsScreen(),
+      ),
+      GoRoute(
+        path: '/trust-quiz',
+        builder: (_, _) => const TrustQuizScreen(),
       ),
       GoRoute(
         path: '/pre-session',

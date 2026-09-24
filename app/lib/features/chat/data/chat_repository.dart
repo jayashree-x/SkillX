@@ -11,12 +11,24 @@ class ChatRepository {
   String get _uid => FirebaseAuth.instance.currentUser!.uid;
 
   Stream<List<ChatSummary>> chats() {
+    // No `orderBy` on the query — that would need a composite index
+    // (participants + lastMessageAt). Sort newest-first client-side instead;
+    // a user has few chats, so this is cheap and needs no index.
     return _db
         .collection('chats')
         .where('participants', arrayContains: _uid)
-        .orderBy('lastMessageAt', descending: true)
         .snapshots()
-        .map((snap) => snap.docs.map(_toSummary).toList());
+        .map((snap) {
+      final list = snap.docs.map(_toSummary).toList();
+      list.sort((a, b) {
+        final at = a.lastMessageAt, bt = b.lastMessageAt;
+        if (at == null && bt == null) return 0;
+        if (at == null) return 1; // nulls last
+        if (bt == null) return -1;
+        return bt.compareTo(at); // newest first
+      });
+      return list;
+    });
   }
 
   ChatSummary _toSummary(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
@@ -85,10 +97,27 @@ class ChatRepository {
           'lastMessage': trimmed,
           'lastMessageAt': FieldValue.serverTimestamp(),
           'unread': {otherUid: FieldValue.increment(1)},
+          // Marks the conversation as started so the teacher's "Ready to teach"
+          // card drops off the home screen once discussion has begun.
+          'initiated': true,
         },
         SetOptions(merge: true),
       );
     await batch.commit();
+  }
+
+  /// Chat ids the signed-in user is in that have an actual conversation going
+  /// (at least one message sent). No `orderBy`, so this needs only the default
+  /// array-contains index — unlike [chats].
+  Stream<Set<String>> initiatedChatIds() {
+    return _db
+        .collection('chats')
+        .where('participants', arrayContains: _uid)
+        .snapshots()
+        .map((snap) => snap.docs
+            .where((d) => d.data()['initiated'] == true)
+            .map((d) => d.id)
+            .toSet());
   }
 
   Future<void> markRead(String chatId) async {

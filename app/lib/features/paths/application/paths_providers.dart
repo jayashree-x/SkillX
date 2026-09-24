@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/paths_functions_repository.dart';
 import '../data/paths_repository.dart';
 import '../domain/learning_path.dart';
+import '../../requests/application/requests_controller.dart';
 
 final pathsRepositoryProvider =
     Provider<PathsRepository>((ref) => PathsRepository());
@@ -24,4 +25,10 @@ final allPathsProvider = FutureProvider<List<ExplorePath>>(
 /// unlocks appear.
 final pathDetailProvider = FutureProvider.family<PathDetail?, String>(
   (ref, pathId) => ref.watch(pathsRepositoryProvider).getPathDetail(pathId),
+);
+
+/// Reworked learning path: the learner's skills-in-progress, grouped from
+/// their quiz attempts (topics covered + which are passed).
+final skillProgressProvider = FutureProvider<List<Map<String, dynamic>>>(
+  (ref) => ref.watch(functionsRepositoryProvider).getSkillProgress(),
 );

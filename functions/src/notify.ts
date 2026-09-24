@@ -1,6 +1,6 @@
 import { getMessaging } from "firebase-admin/messaging";
 
-import { executeRead } from "./dataconnect";
+import { executeRead, executeWrite } from "./dataconnect";
 
 export type NotifyCategory =
   | "requests"
@@ -59,10 +59,34 @@ export async function notify(
   if (prefs[category] === false) return false; // category muted
   if (inQuietHours(prefs)) return false;
 
-  await getMessaging().send({
-    token: user.fcmToken,
-    notification: { title: msg.title, body: msg.body },
-    data: msg.route ? { route: msg.route } : {},
-  });
-  return true;
+  // Push is best-effort: a delivery failure must never fail the caller's
+  // action (e.g. sendRequest). A stale token (app reinstalled) throws
+  // `messaging/registration-token-not-registered`; we clear it so we stop
+  // retrying a dead token, and swallow every other send error too.
+  try {
+    await getMessaging().send({
+      token: user.fcmToken,
+      notification: { title: msg.title, body: msg.body },
+      data: msg.route ? { route: msg.route } : {},
+    });
+    return true;
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code ?? "";
+    const dead =
+      code === "messaging/registration-token-not-registered" ||
+      code === "messaging/invalid-registration-token" ||
+      code === "messaging/invalid-argument";
+    if (dead) {
+      try {
+        await executeWrite(
+          `mutation($uid: String!) { user_update(key: { uid: $uid }, data: { fcmToken: null }) }`,
+          { uid },
+        );
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
+    console.error("notify: push failed (ignored):", code || err);
+    return false;
+  }
 }

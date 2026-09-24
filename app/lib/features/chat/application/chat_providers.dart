@@ -23,3 +23,9 @@ final chatSessionCardProvider =
     StreamProvider.family<ChatSessionCard?, String>(
   (ref, chatId) => ref.watch(chatRepositoryProvider).sessionCard(chatId),
 );
+
+/// Chat ids where discussion has actually started — used to drop accepted
+/// requests off "Ready to teach" once the teacher has begun chatting.
+final initiatedChatIdsProvider = StreamProvider<Set<String>>(
+  (ref) => ref.watch(chatRepositoryProvider).initiatedChatIds(),
+);

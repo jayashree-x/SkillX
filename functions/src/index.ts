@@ -1,5 +1,6 @@
 import type { Request } from "firebase-functions/v2/https";
 import { onRequest } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
@@ -31,6 +32,9 @@ async function requireUid(req: Request): Promise<string> {
 
 function fail(res: Response, e: unknown): void {
   const err = e as ApiError;
+  // Log the real error so it is visible in Cloud Logging (the client only sees
+  // the status + message).
+  console.error("Function error:", err?.message ?? err, err?.stack ?? "");
   res.status(err.status ?? 500).json({ error: err.message ?? "Internal error" });
 }
 
@@ -138,6 +142,51 @@ export const acceptRequest = onRequest({ region: REGION, cors: true }, async (re
     });
 
     res.json({ ok: true, chatId });
+  } catch (e) {
+    fail(res, e);
+  }
+});
+
+/**
+ * HOME-06: a teacher rejects a request. Flips it to REJECTED and notifies the
+ * learner. Mirrors acceptRequest's ownership check so reject goes through a
+ * function that can push (the old client-side Data Connect mutation couldn't).
+ */
+export const rejectRequest = onRequest({ region: REGION, cors: true }, async (req, res) => {
+  try {
+    if (req.method !== "POST") throw new ApiError(405, "Use POST.");
+    const uid = await requireUid(req);
+    const requestId = req.body?.requestId as string | undefined;
+    if (!requestId) throw new ApiError(400, "requestId is required.");
+
+    const { request } = await executeRead<{ request: RequestRow | null }>(
+      `query($id: UUID!) {
+        request(id: $id) {
+          id status
+          teacher { uid }
+          learner { uid }
+          skill { name }
+        }
+      }`,
+      { id: requestId },
+    );
+    if (!request) throw new ApiError(404, "Request not found.");
+    if (request.teacher.uid !== uid) {
+      throw new ApiError(403, "This request is not yours to reject.");
+    }
+
+    await executeWrite(
+      `mutation($id: UUID!) { request_update(id: $id, data: { status: REJECTED }) }`,
+      { id: requestId },
+    );
+
+    await notify(request.learner.uid, "requests", {
+      title: "Request declined",
+      body: `Your request to learn ${request.skill.name} was declined.`,
+      route: "/home",
+    });
+
+    res.json({ ok: true });
   } catch (e) {
     fail(res, e);
   }
@@ -289,11 +338,14 @@ export const generateQuiz = onRequest(
           topic: string;
           level: string;
           teacher: { uid: string };
-          skill: { id: string };
+          request: { skill: { id: string } };
         } | null;
       }>(
+        // The skill lives on the session's request, not on Session directly.
         `query($id: UUID!) {
-           session(id: $id) { id topic level teacher { uid } skill { id } }
+           session(id: $id) {
+             id topic level teacher { uid } request { skill { id } }
+           }
          }`,
         { id: sessionId },
       );
@@ -327,7 +379,7 @@ export const generateQuiz = onRequest(
          }`,
         {
           sessionId,
-          skillId: session.skill.id,
+          skillId: session.request.skill.id,
           teacherUid: uid,
           topic: session.topic,
           subs: coveredSubtopics,
@@ -767,7 +819,7 @@ export const issueCertificate = onRequest(
            certificate_insert(data: {
              userUid: $uid, pathId: $path, skillName: $skill,
              teacherName: $teacher, averageScore: $avg, modulesCompleted: $mods
-           }) { id }
+           })
          }`,
         { uid, path: pathId, skill: skillName, teacher: teacherName, avg: averageScore, mods: modulesCompleted },
       );
@@ -937,12 +989,28 @@ export const sendRequest = onRequest(
         throw new ApiError(403, "You can't send a request to yourself.");
       }
 
+      // Block a duplicate: one open (PENDING/ACCEPTED) request per learner+
+      // teacher+skill. A different skill from the same teacher is still allowed.
+      const { requests: openReqs } = await executeRead<{ requests: { id: string }[] }>(
+        `query($l: String!, $t: String!, $s: UUID!) {
+           requests(where: {
+             learnerUid: { eq: $l }, teacherUid: { eq: $t }, skillId: { eq: $s },
+             status: { in: [PENDING, ACCEPTED] }
+           }, limit: 1) { id }
+         }`,
+        { l: uid, t: teacherUid, s: skillId },
+      );
+      if (openReqs.length > 0) {
+        throw new ApiError(409,
+          "You already have an open request for this skill with this teacher.");
+      }
+
       const created = await executeWrite<{ request_insert: { id: string } }>(
         `mutation($l: String!, $t: String!, $s: UUID!, $when: Timestamp, $msg: String) {
            request_insert(data: {
              learnerUid: $l, teacherUid: $t, skillId: $s,
              preferredDateTime: $when, message: $msg
-           }) { id }
+           })
          }`,
         { l: uid, t: teacherUid, s: skillId, when, msg: message },
       );
@@ -985,3 +1053,367 @@ export const sendRequest = onRequest(
     }
   },
 );
+
+/**
+ * "Session didn't happen" — either the teacher or a learner marks a scheduled
+ * session as not held (e.g. the teacher disconnected and never returned). Sets
+ * the session to CANCELLED (idempotent), clears the session card from each 1:1
+ * chat, and notifies the other party. A CANCELLED session triggers no quiz, so
+ * a broken session never blocks the learner's progress.
+ */
+export const cancelSession = onRequest(
+  { region: REGION, cors: true },
+  async (req, res) => {
+    try {
+      if (req.method !== "POST") throw new ApiError(405, "Use POST.");
+      const uid = await requireUid(req);
+      const sessionId = req.body?.sessionId as string | undefined;
+      if (!sessionId) throw new ApiError(400, "sessionId is required.");
+
+      const { session } = await executeRead<{
+        session: {
+          id: string;
+          status: string;
+          topic: string;
+          teacher: { uid: string; name: string };
+          sessionLearners_on_session: {
+            learner: { uid: string; name: string };
+          }[];
+        } | null;
+      }>(
+        `query($id: UUID!) {
+           session(id: $id) {
+             id status topic
+             teacher { uid name }
+             sessionLearners_on_session { learner { uid name } }
+           }
+         }`,
+        { id: sessionId },
+      );
+      if (!session) throw new ApiError(404, "Session not found.");
+
+      const learners = session.sessionLearners_on_session.map((l) => l.learner);
+      const isTeacher = session.teacher.uid === uid;
+      const isLearner = learners.some((l) => l.uid === uid);
+      if (!isTeacher && !isLearner) {
+        throw new ApiError(403, "This session is not yours.");
+      }
+
+      // Idempotent: cancelling an already-cancelled session is a no-op; a
+      // completed session (quiz already made) cannot be cancelled.
+      if (session.status === "CANCELLED") {
+        res.json({ ok: true, status: "CANCELLED" });
+        return;
+      }
+      if (session.status === "COMPLETED") {
+        throw new ApiError(409, "This session is already completed.");
+      }
+
+      await executeWrite(
+        `mutation($id: UUID!) {
+           session_update(id: $id, data: { status: CANCELLED })
+         }`,
+        { id: sessionId },
+      );
+
+      // Remove the session card from each learner's 1:1 chat with the teacher.
+      const db = getFirestore();
+      for (const l of learners) {
+        const chatId = [session.teacher.uid, l.uid].sort().join("_");
+        await db.doc(`chats/${chatId}`).set(
+          {
+            session: FieldValue.delete(),
+            lastMessage: "Session marked as not held.",
+            lastMessageAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+
+      // Notify the other party.
+      if (isTeacher) {
+        for (const l of learners) {
+          await notify(l.uid, "sessions", {
+            title: "Session cancelled",
+            body: `Your "${session.topic}" session was marked as not held.`,
+            route: "/home",
+          });
+        }
+      } else {
+        await notify(session.teacher.uid, "sessions", {
+          title: "Session marked as not held",
+          body: `A learner marked the "${session.topic}" session as not held.`,
+          route: "/teaching",
+        });
+      }
+
+      res.json({ ok: true, status: "CANCELLED" });
+    } catch (e) {
+      fail(res, e);
+    }
+  },
+);
+
+/**
+ * Safety net for the "teacher disconnected / forgot to wrap up" case. Runs
+ * daily and reminds teachers to create the quiz for any scheduled session whose
+ * start time is at least an hour ago (so it has surely taken place) but no more
+ * than a few days old, and which still has no quiz. The session status is left
+ * untouched — nothing is auto-destroyed; the teacher can still make the quiz.
+ */
+export const remindPendingQuizzes = onSchedule(
+  { region: REGION, schedule: "every day 18:00", timeZone: "Asia/Kolkata" },
+  async () => {
+    const now = Date.now();
+    const from = new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date(now - 60 * 60 * 1000).toISOString();
+
+    const { sessions } = await executeRead<{
+      sessions: {
+        id: string;
+        topic: string;
+        teacher: { uid: string };
+        quizzes_on_session: { id: string }[];
+      }[];
+    }>(
+      `query($from: Timestamp!, $to: Timestamp!) {
+         sessions(where: {
+           status: { eq: SCHEDULED },
+           scheduledAt: { ge: $from, le: $to }
+         }) {
+           id topic
+           teacher { uid }
+           quizzes_on_session { id }
+         }
+       }`,
+      { from, to },
+    );
+
+    for (const s of sessions) {
+      if (s.quizzes_on_session.length > 0) continue; // quiz already exists
+      await notify(s.teacher.uid, "teaching", {
+        title: "Create your session quiz",
+        body: `Wrap up "${s.topic}" — generate the quiz so your learner can be assessed.`,
+        route: "/teaching",
+      });
+    }
+  },
+);
+
+
+// ============================================================================
+// Learning progress, teacher reviews/trust, and the optional teacher trust quiz
+// ============================================================================
+
+/**
+ * PATH (reworked): the learner's "skills in progress" — grouped from their quiz
+ * attempts. Each skill lists the subtopics the teacher covered, with a tick on
+ * a subtopic once any attempt covering it passed (>= 40%).
+ */
+export const getSkillProgress = onRequest(
+  { region: REGION, cors: true },
+  async (req, res) => {
+    try {
+      const uid = await requireUid(req);
+      const { quizAttempts } = await executeRead<{
+        quizAttempts: {
+          skillName: string;
+          percentage: number;
+          completedAt: string;
+          quiz: { topic: string; coveredSubtopics: string[] | null } | null;
+        }[];
+      }>(
+        `query($uid: String!) {
+           quizAttempts(where: { userUid: { eq: $uid } },
+                        orderBy: { completedAt: DESC }) {
+             skillName percentage completedAt
+             quiz { topic coveredSubtopics }
+           }
+         }`,
+        { uid },
+      );
+
+      const PASS = 40;
+      const bySkill = new Map<string, {
+        skill: string; attempts: number; bestPercentage: number;
+        passed: boolean; lastActivity: string;
+        topics: Map<string, boolean>;
+      }>();
+
+      for (const a of quizAttempts) {
+        const g = bySkill.get(a.skillName) ?? {
+          skill: a.skillName, attempts: 0, bestPercentage: 0, passed: false,
+          lastActivity: a.completedAt, topics: new Map<string, boolean>(),
+        };
+        g.attempts += 1;
+        g.bestPercentage = Math.max(g.bestPercentage, a.percentage);
+        const passedThis = a.percentage >= PASS;
+        if (passedThis) g.passed = true;
+        for (const t of a.quiz?.coveredSubtopics ?? []) {
+          g.topics.set(t, (g.topics.get(t) ?? false) || passedThis);
+        }
+        bySkill.set(a.skillName, g);
+      }
+
+      const skills = [...bySkill.values()].map((g) => ({
+        skill: g.skill,
+        attempts: g.attempts,
+        bestPercentage: Math.round(g.bestPercentage),
+        passed: g.passed,
+        lastActivity: g.lastActivity,
+        topics: [...g.topics.entries()].map(([name, done]) => ({ name, done })),
+      }));
+
+      res.json({ skills });
+    } catch (e) { fail(res, e); }
+  },
+);
+
+/**
+ * Teacher detail extras: their learner reviews (stars + feedback) and the
+ * skills they are "Trusted" in.
+ */
+export const getTeacherExtras = onRequest(
+  { region: REGION, cors: true },
+  async (req, res) => {
+    try {
+      const uid = await requireUid(req);
+      const teacherUid = req.body?.teacherUid as string | undefined;
+      const skillId = req.body?.skillId as string | undefined;
+      if (!teacherUid) throw new ApiError(400, "teacherUid is required.");
+
+      const [{ ratings }, { trustedSkills }, { users }] = await Promise.all([
+        executeRead<{ ratings: {
+          stars: number; feedback: string | null; createdAt: string;
+          learner: { name: string; photoUrl: string | null } | null;
+        }[] }>(
+          `query($t: String!) {
+             ratings(where: { teacherUid: { eq: $t } },
+                     orderBy: { createdAt: DESC }, limit: 50) {
+               stars feedback createdAt learner { name photoUrl }
+             }
+           }`, { t: teacherUid }),
+        executeRead<{ trustedSkills: { score: number; skill: { name: string } }[] }>(
+          `query($t: String!) {
+             trustedSkills(where: { teacherUid: { eq: $t } }) {
+               score skill { name }
+             }
+           }`, { t: teacherUid }),
+        executeRead<{ users: { averageRating: number; totalSessions: number }[] }>(
+          `query($t: String!) {
+             users(where: { uid: { eq: $t } }, limit: 1) { averageRating totalSessions }
+           }`, { t: teacherUid }),
+      ]);
+
+      // Does the caller already have an open request for this teacher+skill?
+      let alreadyRequested = false;
+      if (skillId) {
+        const { requests } = await executeRead<{ requests: { id: string }[] }>(
+          `query($l: String!, $t: String!, $s: UUID!) {
+             requests(where: {
+               learnerUid: { eq: $l }, teacherUid: { eq: $t }, skillId: { eq: $s },
+               status: { in: [PENDING, ACCEPTED] }
+             }, limit: 1) { id }
+           }`,
+          { l: uid, t: teacherUid, s: skillId },
+        );
+        alreadyRequested = requests.length > 0;
+      }
+
+      res.json({
+        alreadyRequested,
+        averageRating: users[0]?.averageRating ?? 0,
+        totalSessions: users[0]?.totalSessions ?? 0,
+        trustedSkills: trustedSkills.map((t) => ({ skill: t.skill.name, score: t.score })),
+        reviews: ratings.map((r) => ({
+          stars: r.stars, feedback: r.feedback ?? "",
+          learnerName: r.learner?.name ?? "SkillX learner",
+          learnerPhotoUrl: r.learner?.photoUrl ?? null,
+          createdAt: r.createdAt,
+        })),
+      });
+    } catch (e) { fail(res, e); }
+  },
+);
+
+/**
+ * TRUST-QUIZ step 1: generate the optional skill-assessment quiz for a teacher.
+ * The answer key is stashed in Firestore (not sent to the client).
+ */
+export const startTrustQuiz = onRequest(
+  { region: REGION, cors: true, secrets: [GEMINI_API_KEY], timeoutSeconds: 120 },
+  async (req, res) => {
+    try {
+      const uid = await requireUid(req);
+      const skillId = req.body?.skillId as string | undefined;
+      if (!skillId) throw new ApiError(400, "skillId is required.");
+
+      const { skill } = await executeRead<{ skill: { name: string } | null }>(
+        `query($id: UUID!) { skill(id: $id) { name } }`, { id: skillId });
+      if (!skill) throw new ApiError(404, "Skill not found.");
+
+      const questions = await generateQuizQuestions({
+        topic: skill.name,
+        coveredSubtopics: [
+          `core concepts of ${skill.name}`, `common pitfalls in ${skill.name}`,
+        ],
+        level: "ADVANCED",
+      });
+
+      await getFirestore().doc(`trustQuizzes/${uid}_${skillId}`).set({
+        skillId, skillName: skill.name,
+        correctIndexes: questions.map((q) => q.correctIndex),
+        createdAt: FieldValue.serverTimestamp(),
+      });
+
+      res.json({
+        skillName: skill.name,
+        questions: questions.map((q) => ({
+          questionText: q.questionText, options: q.options,   // correctIndex withheld
+        })),
+      });
+    } catch (e) { fail(res, e); }
+  },
+);
+
+/**
+ * TRUST-QUIZ step 2: grade the teacher's answers server-side. Passing (>= 80%)
+ * awards a per-skill TrustedSkill. The answer key never leaves the server.
+ */
+export const submitTrustQuiz = onRequest(
+  { region: REGION, cors: true },
+  async (req, res) => {
+    try {
+      const uid = await requireUid(req);
+      const skillId = req.body?.skillId as string | undefined;
+      const answers = req.body?.answers as number[] | undefined;
+      if (!skillId || !answers) {
+        throw new ApiError(400, "skillId and answers are required.");
+      }
+
+      const ref = getFirestore().doc(`trustQuizzes/${uid}_${skillId}`);
+      const snap = await ref.get();
+      const data = snap.data();
+      if (!data) throw new ApiError(409, "No trust quiz in progress. Start one first.");
+
+      const key = data.correctIndexes as number[];
+      let score = 0;
+      for (let i = 0; i < key.length; i++) if (answers[i] === key[i]) score++;
+      const percentage = key.length > 0 ? (score / key.length) * 100 : 0;
+      const passed = percentage >= 80;
+
+      if (passed) {
+        await executeWrite(
+          `mutation($t: String!, $s: UUID!, $score: Float!) {
+             trustedSkill_upsert(data: { teacherUid: $t, skillId: $s, score: $score })
+           }`,
+          { t: uid, s: skillId, score: percentage },
+        );
+      }
+      await ref.delete().catch(() => {});
+
+      res.json({ passed, percentage: Math.round(percentage), score, total: key.length });
+    } catch (e) { fail(res, e); }
+  },
+);
+

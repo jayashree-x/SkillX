@@ -24,6 +24,13 @@ final firebaseUserProvider = StreamProvider<User?>(
   (ref) => ref.watch(authRepositoryProvider).authStateChanges(),
 );
 
+/// The signed-in uid, emitting only when the *account* actually changes (not on
+/// every token refresh). User-scoped providers watch this so they re-fetch when
+/// you switch accounts instead of showing the previous user's cached data.
+final authUidProvider = Provider<String?>(
+  (ref) => ref.watch(firebaseUserProvider).valueOrNull?.uid,
+);
+
 /// Where the user is in the auth journey — the single input to the router.
 enum AuthStatus {
   /// Still resolving the first auth emission — show the splash.

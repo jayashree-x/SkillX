@@ -118,6 +118,8 @@ class _Body extends ConsumerWidget {
         ),
 
         const SizedBox(height: AppSpacing.lg),
+        const _UpgradeProfileTile(),
+        const SizedBox(height: AppSpacing.lg),
         Row(
           children: [
             Expanded(
@@ -312,6 +314,52 @@ class _SectionTitle extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _UpgradeProfileTile extends StatelessWidget {
+  const _UpgradeProfileTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.tealTint,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: () => context.push('/trust-quiz'),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.teal.withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.workspace_premium_rounded, color: AppColors.teal),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Upgrade profile',
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary)),
+                    SizedBox(height: 2),
+                    Text('Pass a skill quiz to earn a Trusted badge',
+                        style: TextStyle(
+                            fontSize: 12.5, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AppColors.textTertiary),
+            ],
+          ),
+        ),
       ),
     );
   }

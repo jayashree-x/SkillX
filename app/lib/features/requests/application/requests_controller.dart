@@ -4,10 +4,6 @@ import '../../auth/application/auth_providers.dart';
 import '../../home/application/home_providers.dart';
 import '../../notifications/data/fcm_service.dart';
 import '../data/functions_repository.dart';
-import '../data/requests_repository.dart';
-
-final requestsRepositoryProvider =
-    Provider<RequestsRepository>((ref) => RequestsRepository());
 
 final functionsRepositoryProvider =
     Provider<FunctionsRepository>((ref) => FunctionsRepository());
@@ -23,8 +19,6 @@ final requestsControllerProvider =
 class RequestsController extends AutoDisposeAsyncNotifier<void> {
   @override
   Future<void> build() async {}
-
-  RequestsRepository get _repo => ref.read(requestsRepositoryProvider);
 
   /// HOME-05: send a request. Returns true on success.
   Future<bool> sendRequest({
@@ -47,14 +41,17 @@ class RequestsController extends AutoDisposeAsyncNotifier<void> {
   }
 
   /// HOME-06: accept via the Cloud Function (ACCEPTED + opens chat + notifies).
-  Future<void> accept(String requestId) async {
+  /// Returns the 1:1 chat id (null on failure) so the caller can open the chat.
+  Future<String?> accept(String requestId) async {
     state = const AsyncLoading();
+    String? chatId;
     state = await AsyncValue.guard(() async {
-      await ref.read(functionsRepositoryProvider).acceptRequest(requestId);
+      chatId = await ref.read(functionsRepositoryProvider).acceptRequest(requestId);
       ref
         ..invalidate(incomingRequestsProvider)
         ..invalidate(acceptedTeachingRequestsProvider);
     });
+    return state.hasError ? null : chatId;
   }
 
   /// Pre-Session Form submit → createSession Cloud Function. Returns true on
@@ -89,10 +86,11 @@ class RequestsController extends AutoDisposeAsyncNotifier<void> {
     return !result.hasError;
   }
 
+  /// HOME-06: reject via the Cloud Function (REJECTED + notifies the learner).
   Future<void> reject(String requestId) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      await _repo.rejectRequest(requestId);
+      await ref.read(functionsRepositoryProvider).rejectRequest(requestId);
       ref.invalidate(incomingRequestsProvider);
     });
   }

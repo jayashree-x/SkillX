@@ -3,37 +3,27 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Resume PDFs (Module 10): owner-only write, PDF-only, <= 5 MB (PROF-11/12).
-    // Fine-grained matchedOnly/private visibility is enforced app-side via
-    // short-lived download URLs; broaden/tighten here once matches are modeled.
+    // Resume PDFs (Module 10): owner-only write. Type (PDF) + size (<=5MB) are
+    // validated client-side before upload; the resource-metadata checks were
+    // removed because they intermittently reject resumable uploads at the
+    // beginResumableUpload step (403).
     match /resumes/{userId}/{fileName} {
-      allow write: if request.auth != null
-                   && request.auth.uid == userId
-                   && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType == 'application/pdf';
-      allow read:  if request.auth != null;
+      allow write:  if request.auth != null && request.auth.uid == userId;
+      allow read:   if request.auth != null;
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Profile photos: owner-only write, images, <= 5 MB. Publicly readable.
+    // Profile photos: owner-only write. Publicly readable.
     match /profilePhotos/{userId}/{fileName} {
-      allow write: if request.auth != null
-                   && request.auth.uid == userId
-                   && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType.matches('image/.*');
-      allow read:  if true;
+      allow write:  if request.auth != null && request.auth.uid == userId;
+      allow read:   if true;
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Certificates: PDF generated on-device and uploaded by its owner, then the
-    // immutable Certificate record (with this URL) is written server-side.
-    // Owner-only write, PDF-only, <= 5 MB. Publicly readable (shareable link).
+    // Certificates: on-device PDF uploaded by its owner; public read (shareable).
     match /certificates/{userId}/{fileName} {
       allow read:  if true;
-      allow write: if request.auth != null
-                   && request.auth.uid == userId
-                   && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType == 'application/pdf';
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }

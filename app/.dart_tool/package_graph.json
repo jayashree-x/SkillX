@@ -17,6 +17,7 @@
         "firebase_storage",
         "fl_chart",
         "flutter",
+        "flutter_local_notifications",
         "flutter_riverpod",
         "freezed_annotation",
         "go_router",
@@ -132,6 +133,19 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "flutter_local_notifications",
+      "version": "22.3.0",
+      "dependencies": [
+        "clock",
+        "flutter",
+        "flutter_local_notifications_linux",
+        "flutter_local_notifications_platform_interface",
+        "flutter_local_notifications_web",
+        "flutter_local_notifications_windows",
+        "timezone"
       ]
     },
     {
@@ -757,6 +771,49 @@
         "stream_channel",
         "string_scanner",
         "term_glyph"
+      ]
+    },
+    {
+      "name": "flutter_local_notifications_windows",
+      "version": "3.1.1",
+      "dependencies": [
+        "ffi",
+        "flutter",
+        "flutter_local_notifications_platform_interface",
+        "meta",
+        "timezone",
+        "xml"
+      ]
+    },
+    {
+      "name": "flutter_local_notifications_web",
+      "version": "1.0.0",
+      "dependencies": [
+        "collection",
+        "flutter",
+        "flutter_local_notifications_platform_interface",
+        "timezone",
+        "web"
+      ]
+    },
+    {
+      "name": "flutter_local_notifications_platform_interface",
+      "version": "12.2.0",
+      "dependencies": [
+        "plugin_platform_interface",
+        "timezone"
+      ]
+    },
+    {
+      "name": "flutter_local_notifications_linux",
+      "version": "8.0.1",
+      "dependencies": [
+        "dbus",
+        "ffi",
+        "flutter",
+        "flutter_local_notifications_platform_interface",
+        "path",
+        "xdg_directories"
       ]
     },
     {
@@ -1404,6 +1461,14 @@
       ]
     },
     {
+      "name": "xdg_directories",
+      "version": "1.1.0",
+      "dependencies": [
+        "meta",
+        "path"
+      ]
+    },
+    {
       "name": "cross_file",
       "version": "0.3.5+4",
       "dependencies": [
@@ -1596,14 +1661,6 @@
       "dependencies": []
     },
     {
-      "name": "xdg_directories",
-      "version": "1.1.0",
-      "dependencies": [
-        "meta",
-        "path"
-      ]
-    },
-    {
       "name": "objective_c",
       "version": "9.5.0",
       "dependencies": [
@@ -1662,6 +1719,24 @@
       "version": "1.0.0",
       "dependencies": [
         "path"
+      ]
+    },
+    {
+      "name": "timezone",
+      "version": "0.11.1",
+      "dependencies": [
+        "http",
+        "path"
+      ]
+    },
+    {
+      "name": "dbus",
+      "version": "0.7.15",
+      "dependencies": [
+        "args",
+        "ffi",
+        "meta",
+        "xml"
       ]
     }
   ],

@@ -35,6 +35,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   Uint8List? _photoBytes;
   bool _skillError = false;
+  bool _agreedTerms = false;
+  bool _termsError = false;
 
   @override
   void dispose() {
@@ -59,8 +61,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Future<void> _submit() async {
     final formOk = _formKey.currentState?.validate() ?? false;
     final skillsOk = _teachIds.isNotEmpty && _learnIds.isNotEmpty;
-    setState(() => _skillError = !skillsOk);
-    if (!formOk || !skillsOk) return;
+    setState(() {
+      _skillError = !skillsOk;
+      _termsError = !_agreedTerms;
+    });
+    if (!formOk || !skillsOk || !_agreedTerms) return;
 
     await ref.read(authControllerProvider.notifier).register(
           name: _name.text,
@@ -181,6 +186,61 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     padding: EdgeInsets.only(top: AppSpacing.sm),
                     child: Text(
                       'Pick at least one skill to teach and one to learn.',
+                      style: TextStyle(fontSize: 13, color: AppColors.error),
+                    ),
+                  ),
+
+                const SizedBox(height: AppSpacing.md),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: Checkbox(
+                        value: _agreedTerms,
+                        onChanged: (v) => setState(() {
+                          _agreedTerms = v ?? false;
+                          if (_agreedTerms) _termsError = false;
+                        }),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () =>
+                            setState(() => _agreedTerms = !_agreedTerms),
+                        child: const Text.rich(
+                          TextSpan(
+                            text: 'I agree to the ',
+                            style: TextStyle(
+                                fontSize: 13, color: AppColors.textSecondary),
+                            children: [
+                              TextSpan(
+                                text: 'Terms & Conditions',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.primary),
+                              ),
+                              TextSpan(text: ' and '),
+                              TextSpan(
+                                text: 'Privacy Policy',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.primary),
+                              ),
+                              TextSpan(text: '.'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_termsError)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Please accept the Terms & Conditions to continue.',
                       style: TextStyle(fontSize: 13, color: AppColors.error),
                     ),
                   ),
