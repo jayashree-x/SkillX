@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../auth/presentation/widgets/brand_logo.dart';
 
 /// Module 13 — About Us: what SkillX is, plus version + credits.
 class AboutScreen extends StatelessWidget {
@@ -18,27 +19,7 @@ class AboutScreen extends StatelessWidget {
           Center(
             child: Column(
               children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: const LinearGradient(
-                      colors: [AppColors.primary, AppColors.teal],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text(
-                    'S',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 36,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
+                const BrandLogo(size: 84),
                 const SizedBox(height: 12),
                 const Text(
                   'SkillX',

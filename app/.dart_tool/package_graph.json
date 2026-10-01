@@ -774,15 +774,19 @@
       ]
     },
     {
-      "name": "flutter_local_notifications_windows",
-      "version": "3.1.1",
+      "name": "timezone",
+      "version": "0.11.1",
       "dependencies": [
-        "ffi",
-        "flutter",
-        "flutter_local_notifications_platform_interface",
-        "meta",
-        "timezone",
-        "xml"
+        "http",
+        "path"
+      ]
+    },
+    {
+      "name": "flutter_local_notifications_platform_interface",
+      "version": "12.2.0",
+      "dependencies": [
+        "plugin_platform_interface",
+        "timezone"
       ]
     },
     {
@@ -797,11 +801,15 @@
       ]
     },
     {
-      "name": "flutter_local_notifications_platform_interface",
-      "version": "12.2.0",
+      "name": "flutter_local_notifications_windows",
+      "version": "3.1.1",
       "dependencies": [
-        "plugin_platform_interface",
-        "timezone"
+        "ffi",
+        "flutter",
+        "flutter_local_notifications_platform_interface",
+        "meta",
+        "timezone",
+        "xml"
       ]
     },
     {
@@ -1469,6 +1477,16 @@
       ]
     },
     {
+      "name": "dbus",
+      "version": "0.7.15",
+      "dependencies": [
+        "args",
+        "ffi",
+        "meta",
+        "xml"
+      ]
+    },
+    {
       "name": "cross_file",
       "version": "0.3.5+4",
       "dependencies": [
@@ -1719,24 +1737,6 @@
       "version": "1.0.0",
       "dependencies": [
         "path"
-      ]
-    },
-    {
-      "name": "timezone",
-      "version": "0.11.1",
-      "dependencies": [
-        "http",
-        "path"
-      ]
-    },
-    {
-      "name": "dbus",
-      "version": "0.7.15",
-      "dependencies": [
-        "args",
-        "ffi",
-        "meta",
-        "xml"
       ]
     }
   ],

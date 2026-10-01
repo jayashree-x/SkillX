@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_colors.dart';
-import 'widgets/brand_logo.dart';
-
 /// Branded splash shown while [appAuthStateProvider] resolves the first auth
 /// emission. The router redirects away as soon as the status is known.
 class SplashScreen extends StatelessWidget {
@@ -11,41 +8,20 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.primary,
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
           Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const BrandLogo(
-                  size: 96,
-                  background: Colors.white,
-                  onBackground: AppColors.primary,
-                ),
-                const SizedBox(height: 22),
-                const Text(
-                  'SkillX',
-                  style: TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.5,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Swap skills. Grow together.',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.white.withValues(alpha: 0.82),
-                  ),
-                ),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Image.asset(
+                'assets/images/skillx_splash.png',
+                fit: BoxFit.contain,
+              ),
             ),
           ),
           const Align(
-            alignment: Alignment(0, 0.82),
+            alignment: Alignment(0, 0.88),
             child: _PulsingDots(),
           ),
         ],
