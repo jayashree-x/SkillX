@@ -40,6 +40,7 @@ class _FormState extends ConsumerState<_Form> {
   late bool _quizzes = widget.initial.quizzes;
   late bool _rewards = widget.initial.rewards;
   late bool _teaching = widget.initial.teaching;
+  late bool _messages = widget.initial.messages;
   late bool _quiet = widget.initial.quietEnabled;
   late int _quietStart = widget.initial.quietStart ?? 22;
   late int _quietEnd = widget.initial.quietEnd ?? 7;
@@ -53,6 +54,7 @@ class _FormState extends ConsumerState<_Form> {
       quizzes: _quizzes,
       rewards: _rewards,
       teaching: _teaching,
+      messages: _messages,
       quietStart: _quiet ? _quietStart : null,
       quietEnd: _quiet ? _quietEnd : null,
       utcOffsetMinutes: DateTime.now().timeZoneOffset.inMinutes,
@@ -91,6 +93,8 @@ class _FormState extends ConsumerState<_Form> {
             (v) => setState(() => _rewards = v)),
         _toggle('Teaching opportunities', 'Learners waiting for a skill you teach',
             _teaching, (v) => setState(() => _teaching = v)),
+        _toggle('Messages', 'New chat messages', _messages,
+            (v) => setState(() => _messages = v)),
 
         const SizedBox(height: 8),
         const _SectionLabel('Quiet hours'),

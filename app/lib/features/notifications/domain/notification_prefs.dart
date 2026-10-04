@@ -7,6 +7,7 @@ class NotificationPrefs {
     this.quizzes = true,
     this.rewards = true,
     this.teaching = true,
+    this.messages = true,
     this.quietStart,
     this.quietEnd,
     this.utcOffsetMinutes = 0,
@@ -17,6 +18,7 @@ class NotificationPrefs {
   final bool quizzes; // quiz released
   final bool rewards; // badges / streaks
   final bool teaching; // "learners waiting for your skill"
+  final bool messages; // new chat message
 
   final int? quietStart; // local hour 0–23, null = quiet hours off
   final int? quietEnd;
@@ -34,6 +36,7 @@ class NotificationPrefs {
       quizzes: flag('quizzes'),
       rewards: flag('rewards'),
       teaching: flag('teaching'),
+      messages: flag('messages'),
       quietStart: intOrNull('quietStart'),
       quietEnd: intOrNull('quietEnd'),
       utcOffsetMinutes: intOrNull('utcOffsetMinutes') ?? 0,
@@ -46,6 +49,7 @@ class NotificationPrefs {
         'quizzes': quizzes,
         'rewards': rewards,
         'teaching': teaching,
+        'messages': messages,
         'quietStart': quietStart,
         'quietEnd': quietEnd,
         'utcOffsetMinutes': utcOffsetMinutes,

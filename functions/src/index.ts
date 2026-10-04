@@ -1,6 +1,7 @@
 import type { Request } from "firebase-functions/v2/https";
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
@@ -435,8 +436,20 @@ export const approveQuiz = onRequest(
       const edits = req.body?.edits as QuizEdit[] | undefined;
       if (!quizId) throw new ApiError(400, "quizId is required.");
 
-      const { quiz } = await executeRead<{ quiz: { teacher: { uid: string } } | null }>(
-        `query($id: UUID!) { quiz(id: $id) { teacher { uid } } }`,
+      const { quiz } = await executeRead<{
+        quiz: {
+          teacher: { uid: string };
+          topic: string;
+          session: { request: { learner: { uid: string } } | null } | null;
+        } | null;
+      }>(
+        `query($id: UUID!) {
+           quiz(id: $id) {
+             teacher { uid }
+             topic
+             session { request { learner { uid } } }
+           }
+         }`,
         { id: quizId },
       );
       if (!quiz) throw new ApiError(404, "Quiz not found.");
@@ -478,10 +491,54 @@ export const approveQuiz = onRequest(
         { id: quizId, now: new Date().toISOString() },
       );
 
+      // NOTIF: the quiz is now live for the learner.
+      const learnerUid = quiz.session?.request?.learner?.uid;
+      if (learnerUid) {
+        await notify(learnerUid, "quizzes", {
+          title: "Quiz ready",
+          body: `Your quiz on ${quiz.topic} is ready to take.`,
+          route: "/quizzes",
+        });
+      }
+
       res.json({ ok: true });
     } catch (e) {
       fail(res, e);
     }
+  },
+);
+
+/**
+ * NOTIF: push a notification to the recipient when a new chat message is
+ * written. Messages are created client-side in Firestore, so this trigger is
+ * the only place the server learns about them.
+ */
+export const onChatMessageCreated = onDocumentCreated(
+  { document: "chats/{chatId}/messages/{messageId}", region: REGION },
+  async (event) => {
+    const msg = event.data?.data();
+    const senderId = msg?.senderId as string | undefined;
+    const text = (msg?.text as string | undefined) ?? "";
+    if (!senderId) return;
+
+    const chatSnap = await getFirestore()
+      .doc(`chats/${event.params.chatId}`)
+      .get();
+    const chat = chatSnap.data();
+    if (!chat) return;
+
+    const participants = (chat.participants as string[] | undefined) ?? [];
+    const recipient = participants.find((p) => p !== senderId);
+    if (!recipient) return;
+
+    const members = (chat.members as Record<string, { name?: string }>) ?? {};
+    const senderName = members[senderId]?.name ?? "New message";
+
+    await notify(recipient, "messages", {
+      title: senderName,
+      body: text.length > 120 ? `${text.slice(0, 117)}...` : text,
+      route: "/chat",
+    });
   },
 );
 

@@ -7,7 +7,8 @@ export type NotifyCategory =
   | "sessions"
   | "quizzes"
   | "rewards"
-  | "teaching";
+  | "teaching"
+  | "messages";
 
 interface Prefs {
   requests?: boolean;
@@ -15,6 +16,7 @@ interface Prefs {
   quizzes?: boolean;
   rewards?: boolean;
   teaching?: boolean;
+  messages?: boolean;
   quietStart?: number | null; // local hour 0–23, null = disabled
   quietEnd?: number | null;
   utcOffsetMinutes?: number | null; // device offset captured at save time

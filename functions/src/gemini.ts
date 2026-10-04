@@ -20,6 +20,33 @@ const LEVEL_GUIDANCE: Record<string, string> = {
 };
 
 /**
+ * Gemini's shared models return transient 503 UNAVAILABLE ("experiencing high
+ * demand") and 429/500 under load. Those clear on their own, so retry a few
+ * times with exponential backoff before surfacing the error to the user.
+ */
+async function withRetry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const code = (err as { status?: number; code?: number })?.status ??
+        (err as { code?: number })?.code;
+      const msg = String((err as Error)?.message ?? err);
+      const transient =
+        code === 503 || code === 429 || code === 500 ||
+        /UNAVAILABLE|high demand|overloaded|RESOURCE_EXHAUSTED|INTERNAL/i.test(msg);
+      if (!transient || i === attempts - 1) throw err;
+      // 0.8s, 1.6s, 3.2s (+ jitter) - soaks up short demand spikes.
+      const delay = 800 * 2 ** i + Math.floor(Math.random() * 400);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastErr;
+}
+
+/**
  * QUIZ-01/13, POST-05: generate 5 MCQs from the covered subtopics + level via
  * the Gemini API, using a response schema so the JSON is structurally valid.
  */
@@ -39,7 +66,7 @@ export async function generateQuizQuestions(input: {
     `than clustering on one. Return a JSON array of exactly 10 objects, each with ` +
     `{ questionText: string, options: [4 strings], correctIndex: 0-3 }.`;
 
-  const response = await ai.models.generateContent({
+  const response = await withRetry(() => ai.models.generateContent({
     model: "gemini-flash-latest",
     contents: prompt,
     config: {
@@ -62,7 +89,7 @@ export async function generateQuizQuestions(input: {
       // Flash "thinking" isn't needed for this constrained task — off for speed.
       thinkingConfig: { thinkingBudget: 0 },
     },
-  });
+  }));
 
   const text = response.text;
   if (!text) throw new Error("No quiz content returned.");
