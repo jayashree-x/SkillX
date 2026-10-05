@@ -5,6 +5,7 @@ import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 import type { Response } from "express";
 
 import { CALENDAR_SECRETS, createMeeting } from "./calendar";
@@ -1474,3 +1475,65 @@ export const submitTrustQuiz = onRequest(
   },
 );
 
+
+// =============================================================================
+// TEMPORARY one-off admin data wipe (pre-launch dev reset). Token-guarded.
+// REMOVE THIS FUNCTION after running it once. Keeps the Skill catalog; deletes
+// all user-tied data across Data Connect, Firestore, Storage and Auth.
+// =============================================================================
+export const adminWipe = onRequest(
+  { region: REGION, timeoutSeconds: 540, memory: "512MiB" },
+  async (req, res) => {
+    try {
+      if (req.query.token !== "06131042ce2f7acd7127edf645fb0fc3eb3650d9c6eda9f7") {
+        res.status(403).json({ error: "forbidden" });
+        return;
+      }
+      const result: Record<string, unknown> = {};
+
+      // 1) Data Connect (Cloud SQL): delete children before parents; keep Skill.
+      const dcOrder = [
+        "completedModule", "quizAttempt", "quizQuestion", "rating", "quiz",
+        "sessionLearner", "session", "request", "certificate", "userProgress",
+        "learningModule", "learningPath", "userSkill", "trustedSkill", "user",
+      ];
+      const dc: Record<string, number> = {};
+      for (const t of dcOrder) {
+        const data = await executeWrite<Record<string, number>>(
+          `mutation { ${t}_deleteMany(all: true) }`,
+          {},
+        );
+        dc[t] = data[`${t}_deleteMany`] ?? 0;
+      }
+      result.dataConnect = dc;
+
+      // 2) Firestore: recursive (clears subcollections like chats/*/messages).
+      const fs = getFirestore();
+      for (const c of ["chats", "notifCounters", "trustQuizzes"]) {
+        await fs.recursiveDelete(fs.collection(c));
+      }
+      result.firestore = ["chats", "notifCounters", "trustQuizzes"];
+
+      // 3) Storage: every uploaded object (photos, resumes, certificate PDFs).
+      await getStorage().bucket().deleteFiles({ force: true });
+      result.storage = "all objects deleted";
+
+      // 4) Auth: delete every account in batches of 1000.
+      let deleted = 0;
+      let pageToken: string | undefined;
+      do {
+        const page = await getAuth().listUsers(1000, pageToken);
+        if (page.users.length) {
+          await getAuth().deleteUsers(page.users.map((u) => u.uid));
+          deleted += page.users.length;
+        }
+        pageToken = page.pageToken;
+      } while (pageToken);
+      result.authUsersDeleted = deleted;
+
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      fail(res, e);
+    }
+  },
+);
