@@ -1,14 +1,17 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../auth/application/auth_providers.dart';
 import '../data/chat_repository.dart';
 import '../domain/chat.dart';
 
 final chatRepositoryProvider = Provider<ChatRepository>((ref) => ChatRepository());
 
-/// The signed-in user's uid, for "is this message mine" checks.
+/// The signed-in user's uid, for "is this message mine" checks. Watches the
+/// reactive [authUidProvider] (not a one-shot `FirebaseAuth.currentUser`) so it
+/// never caches an empty uid read during the cold-start auth-restore gap -- which
+/// made the user's own messages mis-render as the other person's (left-aligned).
 final currentUidProvider = Provider<String>(
-  (ref) => FirebaseAuth.instance.currentUser?.uid ?? '',
+  (ref) => ref.watch(authUidProvider) ?? '',
 );
 
 final chatsProvider = StreamProvider<List<ChatSummary>>(
